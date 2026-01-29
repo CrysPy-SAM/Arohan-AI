@@ -1,66 +1,125 @@
-const { UserProfile, University, Shortlist } = require('../models');
+const { UserProfile, University, Shortlist, Todo } = require('../models');
 const { chatWithAI, getUniversityRecommendations } = require('../services/aiService');
 
-// AI Chat
+/**
+ * AI CHAT CONTROLLER
+ * Core brain of AI Counsellor
+ */
 const chat = async (req, res) => {
   try {
     const { message } = req.body;
-    
-    // Get user context
-    const profile = await UserProfile.findOne({ 
-      where: { user_id: req.user.id } 
-    });
-    
-    const shortlists = await Shortlist.findAll({
-      where: { user_id: req.user.id },
-      include: [{ model: University, as: 'university' }]
-    });
-    
-    const lockedUniversities = shortlists.filter(s => s.is_locked);
-    
-    const context = {
-      profile: profile.toJSON(),
-      current_stage: profile.current_stage,
-      profile_completed: profile.is_completed,
-      shortlisted_count: shortlists.length,
-      locked_count: lockedUniversities.length,
-      locked_universities: lockedUniversities.map(s => s.university.name)
-    };
-    
-    // Get AI response
-    const aiResponse = await chatWithAI(message, context);
-    
-    res.json({
-      success: true,
-      data: {
-        message: aiResponse,
-        context
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      message: 'AI chat failed', 
-      error: error.message 
-    });
-  }
-};
 
-// Get Profile Analysis
-const analyzeProfile = async (req, res) => {
-  try {
-    const profile = await UserProfile.findOne({ 
-      where: { user_id: req.user.id } 
+    // 1️⃣ Load user profile
+    const profile = await UserProfile.findOne({
+      where: { user_id: req.user.id }
     });
-    
-    if (!profile.is_completed) {
+
+    if (!profile || !profile.is_completed) {
       return res.status(400).json({
         success: false,
         message: 'Please complete onboarding first'
       });
     }
-    
-    res.json({
+
+    // 2️⃣ Load shortlist + locked universities
+    const shortlists = await Shortlist.findAll({
+      where: { user_id: req.user.id },
+      include: [{ model: University, as: 'university' }]
+    });
+
+    const lockedUniversities = shortlists.filter(s => s.is_locked);
+
+    // 3️⃣ Build AI context
+    const context = {
+      profile: profile.toJSON(),
+      current_stage: profile.current_stage,
+      shortlisted_count: shortlists.length,
+      locked_count: lockedUniversities.length,
+      locked_universities: lockedUniversities.map(s => s.university.name)
+    };
+
+    // 4️⃣ Ask Gemini / AI
+    const aiText = await chatWithAI(message, context);
+
+    // 5️⃣ Decide AI ACTIONS (THIS IS THE MAGIC 🔥)
+    const actions = [];
+
+    // 🔹 Stage: Discovering Universities
+    if (profile.current_stage === 'DISCOVERING' && shortlists.length < 3) {
+      const targetUniversity = await University.findOne();
+
+      if (targetUniversity) {
+        actions.push({
+          type: 'SHORTLIST_UNIVERSITY',
+          universityId: targetUniversity.id,
+          category: 'Target'
+        });
+      }
+    }
+
+    // 🔹 Stage: Finalizing Universities
+    if (profile.current_stage === 'FINALIZING' && lockedUniversities.length === 0) {
+      const shortlistToLock = shortlists[0];
+      if (shortlistToLock) {
+        actions.push({
+          type: 'LOCK_UNIVERSITY',
+          universityId: shortlistToLock.university_id
+        });
+      }
+    }
+
+    // 🔹 Stage: Application Preparation
+    if (profile.current_stage === 'APPLICATION') {
+      actions.push({
+        type: 'ADD_TODO',
+        title: 'Draft SOP for locked university',
+        priority: 'High'
+      });
+
+      actions.push({
+        type: 'ADD_TODO',
+        title: 'Prepare academic documents',
+        priority: 'Medium'
+      });
+    }
+
+    // 6️⃣ Send structured response to frontend
+    return res.json({
+      success: true,
+      data: {
+        message: aiText,
+        actions,   // 🔥 AI IS TAKING ACTIONS
+        context
+      }
+    });
+
+  } catch (error) {
+    console.error('AI Chat Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'AI chat failed',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * PROFILE ANALYSIS
+ */
+const analyzeProfile = async (req, res) => {
+  try {
+    const profile = await UserProfile.findOne({
+      where: { user_id: req.user.id }
+    });
+
+    if (!profile || !profile.is_completed) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please complete onboarding first'
+      });
+    }
+
+    return res.json({
       success: true,
       data: {
         academic_strength: profile.academic_strength,
@@ -70,41 +129,44 @@ const analyzeProfile = async (req, res) => {
         current_stage: profile.current_stage
       }
     });
+
   } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      message: 'Analysis failed', 
-      error: error.message 
+    return res.status(500).json({
+      success: false,
+      message: 'Profile analysis failed',
+      error: error.message
     });
   }
 };
 
-// Get AI University Recommendations
+/**
+ * AI UNIVERSITY RECOMMENDATIONS
+ */
 const getRecommendations = async (req, res) => {
   try {
-    const profile = await UserProfile.findOne({ 
-      where: { user_id: req.user.id } 
+    const profile = await UserProfile.findOne({
+      where: { user_id: req.user.id }
     });
-    
-    if (!profile.is_completed) {
+
+    if (!profile || !profile.is_completed) {
       return res.status(400).json({
         success: false,
         message: 'Please complete onboarding first'
       });
     }
-    
-    // Get recommendations from AI
+
     const recommendations = await getUniversityRecommendations(profile);
-    
-    res.json({
+
+    return res.json({
       success: true,
       data: recommendations
     });
+
   } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      message: 'Recommendations failed', 
-      error: error.message 
+    return res.status(500).json({
+      success: false,
+      message: 'Recommendations failed',
+      error: error.message
     });
   }
 };

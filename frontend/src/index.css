@@ -67,20 +67,20 @@ body {
   }
 }
 
-/* Focus States */
+/* Components */
 @layer components {
   .input-focus {
     @apply focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all;
   }
-  
+
   .btn-primary {
     @apply bg-primary-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-primary-700 transition-all duration-200 focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
   }
-  
+
   .btn-secondary {
     @apply bg-gray-200 text-gray-800 px-6 py-3 rounded-lg font-semibold hover:bg-gray-300 transition-all duration-200;
   }
-  
+
   .card {
     @apply bg-white rounded-xl shadow-sm border border-gray-200 p-6;
   }
