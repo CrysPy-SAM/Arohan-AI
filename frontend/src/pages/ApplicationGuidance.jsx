@@ -1,4 +1,7 @@
 import { FileText, CheckCircle } from 'lucide-react'
+import { useUser } from '../context/UserContext'
+import { Navigate } from 'react-router-dom'
+
 
 const ApplicationGuidance = () => {
   const steps = [
@@ -8,6 +11,12 @@ const ApplicationGuidance = () => {
     { title: 'Submit Test Scores', status: 'pending' },
     { title: 'Pay Application Fee', status: 'pending' }
   ]
+  const { lockedUniversity } = useUser()
+
+if (!lockedUniversity) {
+  return <Navigate to="/universities" replace />
+}
+
 
   return (
     <div className="card">

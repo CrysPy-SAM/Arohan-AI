@@ -1,0 +1,8 @@
+// backend/src/utils/stages.js
+
+module.exports = {
+  BUILDING_PROFILE: 'BUILDING_PROFILE',
+  DISCOVERING: 'DISCOVERING',
+  FINALIZING: 'FINALIZING',
+  APPLICATION: 'APPLICATION'
+};

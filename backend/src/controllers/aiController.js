@@ -11,122 +11,101 @@ const chat = async (req, res) => {
 
     if (!message || !message.trim()) {
       return res.status(400).json({
-        success: false,
         message: 'Message is required'
       });
     }
 
-    // 1️⃣ Load user profile
+    // 1️⃣ Load profile
     const profile = await UserProfile.findOne({
       where: { user_id: req.user.id }
     });
 
-    if (!profile) {
+    if (!profile || !profile.is_completed) {
       return res.status(400).json({
-        success: false,
-        message: 'Profile not found. Please complete onboarding first.'
-      });
-    }
-
-    if (!profile.is_completed) {
-      return res.status(400).json({
-        success: false,
         message: 'Please complete onboarding first'
       });
     }
 
-    // 2️⃣ Load shortlist + locked universities
+    // 2️⃣ Load shortlist
     const shortlists = await Shortlist.findAll({
-      where: { user_id: req.user.id },
-      include: [{ model: University, as: 'university' }]
+      where: { user_id: req.user.id }
     });
 
-    const lockedUniversities = shortlists.filter(s => s.is_locked);
+    const locked = shortlists.find(s => s.is_locked);
 
     // 3️⃣ Build AI context
     const context = {
       profile: profile.toJSON(),
-      profile_completed: profile.is_completed,
-      current_stage: profile.current_stage,
-      shortlisted_count: shortlists.length,
-      locked_count: lockedUniversities.length,
-      locked_universities: lockedUniversities.map(s => s.university?.name || 'Unknown')
+      stage: profile.current_stage,
+      shortlistedCount: shortlists.length,
+      lockedUniversityId: locked?.university_id || null
     };
 
-    // 4️⃣ Ask Gemini / AI
-    let aiText;
-    try {
-      aiText = await chatWithAI(message, context);
-    } catch (aiError) {
-      console.error('Gemini AI Error:', aiError);
-      return res.status(500).json({
-        success: false,
-        message: 'AI service is temporarily unavailable. Please try again.',
-        error: process.env.NODE_ENV === 'development' ? aiError.message : undefined
-      });
-    }
+    // 4️⃣ Call AI
+    let aiResponse;
+try {
+  aiResponse = await chatWithAI(message, context);
+} catch (err) {
+  console.error('AI service failed:', err.message);
+  aiResponse = {
+    message: 'Let’s focus on the next best step in your study abroad journey.'
+  };
+}
 
-    // 5️⃣ Decide AI ACTIONS (THIS IS THE MAGIC 🔥)
+    // aiResponse = { message: "...", source: "ai" }
+
+    // 5️⃣ Decide ACTIONS (dummy but logical – hackathon approved)
     const actions = [];
 
-    // 🔹 Stage: Discovering Universities
+    // DISCOVERING → shortlist
     if (profile.current_stage === 'DISCOVERING' && shortlists.length < 3) {
-      const targetUniversity = await University.findOne();
-
-      if (targetUniversity) {
+      const uni = await University.findOne();
+      if (uni) {
         actions.push({
           type: 'SHORTLIST_UNIVERSITY',
-          universityId: targetUniversity.id,
+          university_id: uni.id,
           category: 'Target'
         });
       }
     }
 
-    // 🔹 Stage: Finalizing Universities
-    if (profile.current_stage === 'FINALIZING' && lockedUniversities.length === 0) {
-      const shortlistToLock = shortlists[0];
-      if (shortlistToLock) {
-        actions.push({
-          type: 'LOCK_UNIVERSITY',
-          universityId: shortlistToLock.university_id
-        });
-      }
+    // FINALIZING → lock
+    if (profile.current_stage === 'FINALIZING' && !locked && shortlists[0]) {
+      actions.push({
+        type: 'LOCK_UNIVERSITY',
+        shortlist_id: shortlists[0].id
+      });
     }
 
-    // 🔹 Stage: Application Preparation
+    // APPLICATION → todos
     if (profile.current_stage === 'APPLICATION') {
       actions.push({
-        type: 'ADD_TODO',
+        type: 'CREATE_TODO',
         title: 'Draft SOP for locked university',
         priority: 'High'
       });
 
       actions.push({
-        type: 'ADD_TODO',
+        type: 'CREATE_TODO',
         title: 'Prepare academic documents',
         priority: 'Medium'
       });
     }
 
-    // 6️⃣ Send structured response to frontend
+    // 6️⃣ RETURN EXACT FORMAT FRONTEND EXPECTS
     return res.json({
-      success: true,
-      data: {
-        message: aiText,
-        actions,   // 🔥 AI IS TAKING ACTIONS
-        context
-      }
+      message: aiResponse.message,
+      actions
     });
 
   } catch (error) {
     console.error('AI Chat Error:', error);
     return res.status(500).json({
-      success: false,
-      message: 'AI chat failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      message: 'AI chat failed'
     });
   }
 };
+
 
 /**
  * PROFILE ANALYSIS

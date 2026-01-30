@@ -10,7 +10,7 @@ const startServer = async () => {
     await testConnection();
     
     // Sync database models
-    await sequelize.sync({ alter: true });
+    await sequelize.sync();
     console.log('✅ Database models synced');
     
     // Start server

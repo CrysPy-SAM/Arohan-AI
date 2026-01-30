@@ -4,37 +4,42 @@ const matchUniversities = async (profile, universities) => {
     target: [],
     safe: []
   };
-  
+
   for (const uni of universities) {
-    // Budget filter
-    const totalCost = uni.tuition_fee_max + uni.living_cost;
-    if (totalCost > profile.budget_max) {
+    // 🛡 SAFE COST CALCULATION
+    const tuition = uni.tuition_fee_max || 0;
+    const living = uni.living_cost || 0;
+    const totalCost = tuition + living;
+
+    if (totalCost > (profile.budget_max || 0)) {
       continue;
     }
-    
-    // GPA comparison
-    const gpaGap = profile.gpa - uni.min_gpa;
-    
-    // IELTS comparison
-    const ieltsGap = (profile.ielts_score || 0) - uni.min_ielts;
-    
-    // Categorize
-    if (gpaGap < 0 || ieltsGap < -0.5 || uni.acceptance_rate < 0.15) {
-      // Dream (reach)
+
+    // 🛡 SAFE GPA & IELTS
+    const gpa = profile.gpa || 0;
+    const minGpa = uni.min_gpa || 0;
+    const gpaGap = gpa - minGpa;
+
+    const ielts = profile.ielts_score || 0;
+    const minIelts = uni.min_ielts || 0;
+    const ieltsGap = ielts - minIelts;
+
+    const acceptanceRate = uni.acceptance_rate ?? 0.3;
+
+    // Categorization
+    if (gpaGap < 0 || ieltsGap < -0.5 || acceptanceRate < 0.15) {
       matched.dream.push({
         ...uni.toJSON(),
         fit_score: calculateFitScore(profile, uni),
         category: 'Dream'
       });
-    } else if (gpaGap >= 0.3 && ieltsGap >= 0.5 && uni.acceptance_rate > 0.4) {
-      // Safe
+    } else if (gpaGap >= 0.3 && ieltsGap >= 0.5 && acceptanceRate > 0.4) {
       matched.safe.push({
         ...uni.toJSON(),
         fit_score: calculateFitScore(profile, uni),
         category: 'Safe'
       });
     } else {
-      // Target
       matched.target.push({
         ...uni.toJSON(),
         fit_score: calculateFitScore(profile, uni),
@@ -42,41 +47,47 @@ const matchUniversities = async (profile, universities) => {
       });
     }
   }
-  
+
   // Sort by fit score
   matched.dream.sort((a, b) => b.fit_score - a.fit_score);
   matched.target.sort((a, b) => b.fit_score - a.fit_score);
   matched.safe.sort((a, b) => b.fit_score - a.fit_score);
-  
+
   return matched;
 };
 
 const calculateFitScore = (profile, university) => {
-  let score = 50; // Base score
-  
-  // GPA score
-  const gpaGap = profile.gpa - university.min_gpa;
+  let score = 50;
+
+  const gpa = profile.gpa || 0;
+  const minGpa = university.min_gpa || 0;
+  const gpaGap = gpa - minGpa;
+
   if (gpaGap >= 0.5) score += 20;
   else if (gpaGap >= 0.2) score += 10;
   else if (gpaGap < 0) score -= 15;
-  
-  // IELTS score
-  const ieltsGap = (profile.ielts_score || 0) - university.min_ielts;
+
+  const ielts = profile.ielts_score || 0;
+  const minIelts = university.min_ielts || 0;
+  const ieltsGap = ielts - minIelts;
+
   if (ieltsGap >= 1) score += 15;
   else if (ieltsGap >= 0.5) score += 10;
   else if (ieltsGap < 0) score -= 15;
-  
-  // Budget score
-  const totalCost = university.tuition_fee_max + university.living_cost;
-  const budgetGap = profile.budget_max - totalCost;
+
+  const tuition = university.tuition_fee_max || 0;
+  const living = university.living_cost || 0;
+  const totalCost = tuition + living;
+  const budgetGap = (profile.budget_max || 0) - totalCost;
+
   if (budgetGap > 10000) score += 15;
   else if (budgetGap > 5000) score += 10;
   else if (budgetGap < 0) score -= 20;
-  
-  // Acceptance rate score
-  if (university.acceptance_rate > 0.5) score += 10;
-  else if (university.acceptance_rate < 0.15) score -= 10;
-  
+
+  const acceptanceRate = university.acceptance_rate ?? 0.3;
+  if (acceptanceRate > 0.5) score += 10;
+  else if (acceptanceRate < 0.15) score -= 10;
+
   return Math.max(0, Math.min(100, score));
 };
 

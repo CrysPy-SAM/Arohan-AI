@@ -45,7 +45,9 @@ export const UserProvider = ({ children }) => {
     fetchProfile,
     updateProfile,
     isProfileCompleted: profile?.is_completed || false,
-    currentStage: profile?.current_stage || 'Building Profile'
+    currentStage: profile?.current_stage || 'Building Profile',
+    lockedUniversity: profile?.locked_university || null
+
   }
 
   return (
