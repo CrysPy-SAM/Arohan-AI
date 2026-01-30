@@ -9,12 +9,26 @@ const chat = async (req, res) => {
   try {
     const { message } = req.body;
 
+    if (!message || !message.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Message is required'
+      });
+    }
+
     // 1️⃣ Load user profile
     const profile = await UserProfile.findOne({
       where: { user_id: req.user.id }
     });
 
-    if (!profile || !profile.is_completed) {
+    if (!profile) {
+      return res.status(400).json({
+        success: false,
+        message: 'Profile not found. Please complete onboarding first.'
+      });
+    }
+
+    if (!profile.is_completed) {
       return res.status(400).json({
         success: false,
         message: 'Please complete onboarding first'
@@ -32,14 +46,25 @@ const chat = async (req, res) => {
     // 3️⃣ Build AI context
     const context = {
       profile: profile.toJSON(),
+      profile_completed: profile.is_completed,
       current_stage: profile.current_stage,
       shortlisted_count: shortlists.length,
       locked_count: lockedUniversities.length,
-      locked_universities: lockedUniversities.map(s => s.university.name)
+      locked_universities: lockedUniversities.map(s => s.university?.name || 'Unknown')
     };
 
     // 4️⃣ Ask Gemini / AI
-    const aiText = await chatWithAI(message, context);
+    let aiText;
+    try {
+      aiText = await chatWithAI(message, context);
+    } catch (aiError) {
+      console.error('Gemini AI Error:', aiError);
+      return res.status(500).json({
+        success: false,
+        message: 'AI service is temporarily unavailable. Please try again.',
+        error: process.env.NODE_ENV === 'development' ? aiError.message : undefined
+      });
+    }
 
     // 5️⃣ Decide AI ACTIONS (THIS IS THE MAGIC 🔥)
     const actions = [];
@@ -98,7 +123,7 @@ const chat = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'AI chat failed',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
 };
@@ -131,10 +156,11 @@ const analyzeProfile = async (req, res) => {
     });
 
   } catch (error) {
+    console.error('Profile Analysis Error:', error);
     return res.status(500).json({
       success: false,
       message: 'Profile analysis failed',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
 };
@@ -163,10 +189,11 @@ const getRecommendations = async (req, res) => {
     });
 
   } catch (error) {
+    console.error('Recommendations Error:', error);
     return res.status(500).json({
       success: false,
       message: 'Recommendations failed',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
 };

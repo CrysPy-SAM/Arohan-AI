@@ -2,24 +2,35 @@ const { UserProfile, Todo } = require('../models');
 const { analyzeProfile } = require('../services/profileAnalyzer');
 const { generateInitialTodos } = require('../services/todoGenerator');
 
-// Complete Onboarding
+/**
+ * Helper: convert empty string to null & cast numbers
+ */
+const sanitizeNumber = (value) => {
+  if (value === '' || value === undefined || value === null) return null;
+  const num = Number(value);
+  return isNaN(num) ? null : num;
+};
+
+// ==========================
+// COMPLETE ONBOARDING
+// ==========================
 const completeOnboarding = async (req, res) => {
   try {
-    const raw = req.body;
+    const body = req.body;
 
-    // 🔥 SANITIZE DATA
+    // ✅ SANITIZED DATA
     const profileData = {
-      ...raw,
+      ...body,
 
-      gpa: raw.gpa ? Number(raw.gpa) : null,
-      graduation_year: raw.graduation_year ? Number(raw.graduation_year) : null,
-      target_intake_year: raw.target_intake_year ? Number(raw.target_intake_year) : null,
+      gpa: sanitizeNumber(body.gpa),
+      ielts_score: sanitizeNumber(body.ielts_score),
+      gre_score: sanitizeNumber(body.gre_score),
 
-      budget_min: raw.budget_min ? Number(raw.budget_min) : null,
-      budget_max: raw.budget_max ? Number(raw.budget_max) : null,
+      budget_min: sanitizeNumber(body.budget_min),
+      budget_max: sanitizeNumber(body.budget_max),
 
-      ielts_score: raw.ielts_score ? Number(raw.ielts_score) : null,
-      gre_score: raw.gre_score ? Number(raw.gre_score) : null,
+      graduation_year: sanitizeNumber(body.graduation_year),
+      target_intake_year: sanitizeNumber(body.target_intake_year),
     };
 
     const profile = await UserProfile.findOne({
@@ -33,13 +44,14 @@ const completeOnboarding = async (req, res) => {
       });
     }
 
+    // 1️⃣ Save onboarding data
     await profile.update({
       ...profileData,
       is_completed: true,
       current_stage: 'DISCOVERING'
     });
 
-    // 🔮 AI Analysis
+    // 2️⃣ AI Profile Analysis
     const analysis = await analyzeProfile(profileData);
 
     await profile.update({
@@ -49,18 +61,22 @@ const completeOnboarding = async (req, res) => {
       improvement_areas: analysis.improvement_areas
     });
 
-    // 📝 Todos
+    // 3️⃣ Generate initial TODOS
     const todos = await generateInitialTodos(req.user.id, profileData);
 
-    res.json({
+    return res.json({
       success: true,
       message: 'Onboarding completed successfully',
-      data: { profile, analysis, todos }
+      data: {
+        profile,
+        analysis,
+        todos
+      }
     });
 
   } catch (error) {
     console.error('Onboarding Error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Onboarding failed',
       error: error.message
@@ -68,38 +84,63 @@ const completeOnboarding = async (req, res) => {
   }
 };
 
-
-// Get Profile
+// ==========================
+// GET PROFILE
+// ==========================
 const getProfile = async (req, res) => {
   try {
-    const profile = await UserProfile.findOne({ 
-      where: { user_id: req.user.id } 
+    const profile = await UserProfile.findOne({
+      where: { user_id: req.user.id }
     });
-    
-    res.json({
+
+    return res.json({
       success: true,
       data: profile
     });
   } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to fetch profile', 
-      error: error.message 
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch profile',
+      error: error.message
     });
   }
 };
 
-// Update Profile
+// ==========================
+// UPDATE PROFILE
+// ==========================
 const updateProfile = async (req, res) => {
   try {
-    const profile = await UserProfile.findOne({ 
-      where: { user_id: req.user.id } 
+    const profile = await UserProfile.findOne({
+      where: { user_id: req.user.id }
     });
-    
-    await profile.update(req.body);
-    
-    // Re-analyze if major fields changed
-    if (req.body.gpa || req.body.ielts_score || req.body.gre_score) {
+
+    if (!profile) {
+      return res.status(404).json({
+        success: false,
+        message: 'Profile not found'
+      });
+    }
+
+    const body = req.body;
+
+    const updatedData = {
+      ...body,
+      gpa: sanitizeNumber(body.gpa),
+      ielts_score: sanitizeNumber(body.ielts_score),
+      gre_score: sanitizeNumber(body.gre_score),
+      budget_min: sanitizeNumber(body.budget_min),
+      budget_max: sanitizeNumber(body.budget_max),
+    };
+
+    await profile.update(updatedData);
+
+    // 🔄 Re-analyze if scores changed
+    if (
+      body.gpa !== undefined ||
+      body.ielts_score !== undefined ||
+      body.gre_score !== undefined
+    ) {
       const analysis = await analyzeProfile(profile);
       await profile.update({
         academic_strength: analysis.academic_strength,
@@ -107,17 +148,18 @@ const updateProfile = async (req, res) => {
         overall_readiness: analysis.overall_readiness
       });
     }
-    
-    res.json({
+
+    return res.json({
       success: true,
       message: 'Profile updated successfully',
       data: profile
     });
+
   } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      message: 'Profile update failed', 
-      error: error.message 
+    return res.status(500).json({
+      success: false,
+      message: 'Profile update failed',
+      error: error.message
     });
   }
 };
