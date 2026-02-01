@@ -32,7 +32,7 @@ const TodoList = () => {
   }
 
   if (loading) {
-    return <div className="card">Loading todos...</div>
+    return <div className="card">Loading todos....</div>
   }
 
   return (
